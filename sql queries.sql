@@ -1,110 +1,95 @@
----------------------------
--- BLINKIT SALES ANALYSIS --
----------------------------
+select * from blinkit_sales
 
--- 1. VIEW RAW DATA --
-SELECT * FROM blinkit_data;
+--update inconsistent data
+update blinkit_sales
+set item_fat_content =
+case
+when item_fat_content ilike 'l%' then 'Low Fat'
+when item_fat_content ilike 'r%' then 'Regular'
+else item_fat_content
+end
 
--- 2. DATA CLEANING --
--- Fix inconsistent fat content labels
-UPDATE blinkit_data
-SET Item_Fat_Content = 
-    CASE 
-        WHEN Item_Fat_Content IN ('LF', 'low fat') THEN 'Low Fat'
-        WHEN Item_Fat_Content = 'reg' THEN 'Regular'
-        ELSE Item_Fat_Content
-    END;
+select distinct item_fat_content from blinkit_sales
 
--- Verify cleaning results
-SELECT DISTINCT Item_Fat_Content FROM blinkit_data;
+--KPI's Requirement:
 
----------------------
--- A. KEY METRICS --
----------------------
+--1. total sales
+select round((sum(total_sales)/1000000)::numeric, 2) || ' Millions' as total_sales_formatted
+from blinkit_sales;
 
--- 1. TOTAL SALES (IN MILLIONS)
-SELECT ROUND(SUM(Total_Sales)/1000000.0, 2) AS Total_Sales_Million 
-FROM blinkit_data;
+--2.average sales
+select round(avg(total_sales)::numeric,0) as avg_sales
+from blinkit_sales
 
--- 2. AVERAGE DAILY SALES
-SELECT ROUND(AVG(Total_Sales), 0) AS Avg_Sales 
-FROM blinkit_data;
+--3.Number of items
+select count(*)
+from blinkit_sales
 
--- 3. TOTAL ITEMS/ORDERS
-SELECT COUNT(*) AS No_of_Orders 
-FROM blinkit_data;
+--4. average ratings
+select round(avg(rating)::numeric,2) as avg_rating
+from blinkit_sales
 
--- 4. AVERAGE CUSTOMER RATING
-SELECT ROUND(AVG(Rating), 1) AS Avg_Rating 
-FROM blinkit_data;
+--Granular Requirement
+--1. total sales by fat content 
+select item_fat_content, 
+round(sum(total_sales)::numeric,2) as total_sales, 
+round(avg(total_sales)::numeric,0) as avg_sales, 
+count(*) as no_of_items, 
+round(avg(rating)::numeric,2) as average_rating
+from blinkit_sales
+group by item_fat_content
+order by total_sales desc
 
---------------------------
--- B. FAT CONTENT SALES --
---------------------------
-SELECT Item_Fat_Content, 
-       ROUND(SUM(Total_Sales), 2) AS Total_Sales
-FROM blinkit_data
-GROUP BY Item_Fat_Content;
+--2. total sales by item type
+select item_type, 
+round(sum(total_sales)::numeric,2) as total_sales, 
+round(avg(total_sales)::numeric,0) as avg_sales, 
+count(*) as no_of_items, 
+round(avg(rating)::numeric,2) as average_rating
+from blinkit_sales
+group by item_type
+order by total_sales desc
+limit 5
 
-------------------------
--- C. ITEM TYPE SALES --
-------------------------
-SELECT Item_Type, 
-       ROUND(SUM(Total_Sales), 2) AS Total_Sales
-FROM blinkit_data
-GROUP BY Item_Type
-ORDER BY Total_Sales DESC;
+--3. Fat Content by Outlet for Total Sales
+select 
+  outlet_location_type,
+  coalesce(sum(case when item_fat_content = 'Low Fat' then total_sales end), 0) as low_fat,
+  coalesce(sum(case when item_fat_content = 'Regular' then total_sales end), 0) as regular
+from blinkit_sales
+group by outlet_location_type
+order by outlet_location_type;
 
------------------------------------------
--- D. OUTLET LOCATION FAT SALES BREAKDOWN --
------------------------------------------
-SELECT 
-    Outlet_Location_Type,
-    COALESCE(SUM(CASE WHEN Item_Fat_Content = 'Low Fat' THEN Total_Sales END), 0) AS Low_Fat,
-    COALESCE(SUM(CASE WHEN Item_Fat_Content = 'Regular' THEN Total_Sales END), 0) AS Regular
-FROM blinkit_data
-GROUP BY Outlet_Location_Type
-ORDER BY Outlet_Location_Type;
+--4. Total Sales by Outlet Establishment
+select outlet_establishment_year, round(sum(total_sales)::numeric,2) as total_sales_year_wise
+from blinkit_sales
+group by outlet_establishment_year
+order by outlet_establishment_year
 
--------------------------------------
--- E. OUTLET AGE PERFORMANCE ANALYSIS --
--------------------------------------
-SELECT Outlet_Establishment_Year, 
-       ROUND(SUM(Total_Sales), 2) AS Total_Sales
-FROM blinkit_data
-GROUP BY Outlet_Establishment_Year
-ORDER BY Outlet_Establishment_Year;
+--Charts Requirement
+--1. Percentage of Sales by Outlet Size
+select 
+  outlet_size, 
+  round(sum(total_sales)::numeric, 2) as total_sales,
+  round((sum(total_sales) * 100.0 / sum(sum(total_sales)) over ())::numeric, 2) as sales_percentage
+from blinkit_sales
+group by outlet_size
+order by outlet_size
 
--------------------------------------
--- F. OUTLET SIZE CONTRIBUTION --
--------------------------------------
-SELECT 
-    Outlet_Size,
-    ROUND(SUM(Total_Sales), 2) AS Total_Sales,
-    ROUND((SUM(Total_Sales) * 100.0 / SUM(SUM(Total_Sales)) OVER()), 2) AS Sales_Percentage
-FROM blinkit_data
-GROUP BY Outlet_Size
-ORDER BY Total_Sales DESC;
+--2.Sales by Outlet Location in percentage
+select 
+  outlet_location_type, 
+  round(sum(total_sales)::numeric, 2) as total_sales,
+  round((sum(total_sales) * 100.0 / sum(sum(total_sales)) over ())::numeric, 2) as sales_percentage
+from blinkit_sales
+group by outlet_location_type
+order by outlet_location_type
 
--------------------------------
--- G. LOCATION WISE SALES --
--------------------------------
-SELECT Outlet_Location_Type, 
-       ROUND(SUM(Total_Sales), 2) AS Total_Sales
-FROM blinkit_data
-GROUP BY Outlet_Location_Type
-ORDER BY Total_Sales DESC;
-
----------------------------------
--- H. OUTLET TYPE PERFORMANCE --
----------------------------------
-SELECT 
-    Outlet_Type,
-    ROUND(SUM(Total_Sales), 2) AS Total_Sales,
-    ROUND(AVG(Total_Sales), 0) AS Avg_Sales,
-    COUNT(*) AS No_Of_Items,
-    ROUND(AVG(Rating), 2) AS Avg_Rating,
-    ROUND(AVG(Item_Visibility), 2) AS Visibility
-FROM blinkit_data
-GROUP BY Outlet_Type
-ORDER BY Total_Sales DESC;
+--3. All Metrics by Outlet Type in percentage
+select 
+  outlet_type, 
+  round(sum(total_sales)::numeric, 2) as total_sales,
+  round((sum(total_sales) * 100.0 / sum(sum(total_sales)) over ())::numeric, 2) as sales_percentage
+from blinkit_sales
+group by outlet_type
+order by outlet_type
